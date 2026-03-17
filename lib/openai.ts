@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import OpenAI, { AzureOpenAI } from 'openai';
 import { z } from 'zod';
 import type {
   CharacterAnchor,
@@ -10,6 +10,7 @@ import type {
 
 const DEFAULT_TEXT_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const DEFAULT_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+const DEFAULT_AZURE_IMAGE_DEPLOYMENT = process.env.AZURE_OPENAI_GPT_IMAGE_DEPLOYMENT || '';
 const DEFAULT_STYLE_PRESET: StylePreset = 'cinematic';
 
 const stylePresetGuides: Record<StylePreset, string> = {
@@ -43,14 +44,38 @@ const panelImagePromptSchema = z.object({
 type ParsedComic = z.infer<typeof comicSchema>;
 type ParsedScriptPanel = ParsedComic['panels'][number];
 
-function getClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
+function getOpenAIConfig() {
+  const standardApiKey = process.env.OPENAI_API_KEY?.trim();
 
-  if (!apiKey) {
-    throw new Error('缺少 OPENAI_API_KEY，无法调用 OpenAI。');
+  if (standardApiKey) {
+    return {
+      provider: 'openai' as const,
+      client: new OpenAI({ apiKey: standardApiKey }),
+      textModel: DEFAULT_TEXT_MODEL,
+      imageModel: DEFAULT_IMAGE_MODEL
+    };
   }
 
-  return new OpenAI({ apiKey });
+  const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT?.trim();
+  const azureApiKey = process.env.AZURE_OPENAI_API_KEY?.trim();
+  const azureApiVersion = process.env.AZURE_OPENAI_API_VERSION?.trim();
+
+  if (!azureEndpoint || !azureApiKey || !azureApiVersion) {
+    throw new Error(
+      '缺少可用的 AI 配置。请设置 OPENAI_API_KEY，或同时设置 AZURE_OPENAI_ENDPOINT、AZURE_OPENAI_API_KEY、AZURE_OPENAI_API_VERSION。'
+    );
+  }
+
+  return {
+    provider: 'azure' as const,
+    client: new AzureOpenAI({
+      endpoint: azureEndpoint,
+      apiKey: azureApiKey,
+      apiVersion: azureApiVersion
+    }),
+    textModel: DEFAULT_TEXT_MODEL,
+    imageModel: DEFAULT_AZURE_IMAGE_DEPLOYMENT || DEFAULT_IMAGE_MODEL
+  };
 }
 
 function toPanelId(index: number) {
@@ -160,9 +185,9 @@ function buildImagePromptPrompt({
 }
 
 async function createStructuredJson<T>(schemaName: string, schema: Record<string, unknown>, prompt: string): Promise<T> {
-  const client = getClient();
+  const { client, textModel } = getOpenAIConfig();
   const response = await client.responses.create({
-    model: DEFAULT_TEXT_MODEL,
+    model: textModel,
     input: [
       {
         role: 'system',
@@ -259,9 +284,9 @@ async function generatePanelImagePrompt(input: {
 }
 
 async function generateImage(prompt: string) {
-  const client = getClient();
+  const { client, imageModel } = getOpenAIConfig();
   const result = await client.images.generate({
-    model: DEFAULT_IMAGE_MODEL,
+    model: imageModel,
     prompt,
     size: '1024x1024'
   });
@@ -364,8 +389,8 @@ export async function generateComic(request: ComicGenerationRequest): Promise<Co
     summary: script.summary,
     stylePreset,
     characters,
-    model: DEFAULT_TEXT_MODEL,
-    imageModel: DEFAULT_IMAGE_MODEL,
+    model: getOpenAIConfig().textModel,
+    imageModel: getOpenAIConfig().imageModel,
     usedFallbackImages: panels.some((panel) => panel.imageStatus === 'fallback'),
     panels,
     warnings

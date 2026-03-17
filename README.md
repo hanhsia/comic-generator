@@ -21,14 +21,18 @@
 ## 环境要求
 
 - Node.js 18.18+（建议 Node.js 20+）
-- 已配置 OpenAI 相关环境变量
+- 已配置标准 OpenAI 或 Azure OpenAI 相关环境变量
 
 ## 环境变量
+
+支持两套配置：标准 OpenAI 与 Azure OpenAI。
+
+### 方案 A：标准 OpenAI
 
 最少需要：
 
 ```bash
-OPENAI_API_KEY=your_api_key
+OPENAI_API_KEY=your_openai_api_key
 ```
 
 可选：
@@ -38,11 +42,27 @@ OPENAI_MODEL=gpt-4.1-mini
 OPENAI_IMAGE_MODEL=gpt-image-1
 ```
 
+### 方案 B：Azure OpenAI
+
+当 `OPENAI_API_KEY` 未设置时，服务端会自动回退到 Azure OpenAI：
+
+```bash
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=your_azure_openai_api_key
+AZURE_OPENAI_API_VERSION=2024-10-21
+AZURE_OPENAI_GPT_IMAGE_DEPLOYMENT=your-gpt-image-deployment
+
+# 文字模型 / deployment 名称仍沿用 OPENAI_MODEL
+OPENAI_MODEL=gpt-4.1-mini
+```
+
 说明：
 
-- 默认优先读取 `OPENAI_API_KEY`
-- `OPENAI_MODEL` 未设置时，默认使用 `gpt-4.1-mini`
-- `OPENAI_IMAGE_MODEL` 未设置时，默认使用 `gpt-image-1`
+- 如果设置了 `OPENAI_API_KEY`，默认优先使用标准 OpenAI
+- 如果未设置 `OPENAI_API_KEY`，且同时提供了 Azure 所需变量，则自动使用 Azure OpenAI
+- `OPENAI_MODEL` 未设置时，默认使用 `gpt-4.1-mini`；在 Azure 模式下，它应填写你的文本模型 deployment 名称
+- `OPENAI_IMAGE_MODEL` 未设置时，标准 OpenAI 默认使用 `gpt-image-1`
+- Azure 模式下，图片生成优先使用 `AZURE_OPENAI_GPT_IMAGE_DEPLOYMENT`，未设置时才回退到 `OPENAI_IMAGE_MODEL`
 - 如果图片模型不可用、账户无权限、或接口返回失败，应用仍会返回分镜和提示词，并在界面中显示回退说明
 - 如果文本模型不可用，则无法产出结构化分镜结果
 
@@ -280,7 +300,7 @@ lib/
 ## 已知实现细节
 
 - 文本结构化输出基于 OpenAI Responses API + JSON Schema
-- 图片生成当前使用 `OPENAI_IMAGE_MODEL` 指定的模型，默认 `gpt-image-1`
+- 图片生成在标准 OpenAI 下使用 `OPENAI_IMAGE_MODEL`（默认 `gpt-image-1`）；在 Azure OpenAI 下优先使用 `AZURE_OPENAI_GPT_IMAGE_DEPLOYMENT`
 - 图片可能以 URL 或 base64 data URL 形式返回
 - 默认文本模型为 `gpt-4.1-mini`
 - 默认风格预设为 `cinematic`
